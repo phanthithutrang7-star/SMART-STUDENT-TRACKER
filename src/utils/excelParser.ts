@@ -160,3 +160,125 @@ export function downloadStudentTemplateExcel() {
   XLSX.utils.book_append_sheet(wb, ws, 'Danh_Sach_Hoc_Sinh');
   XLSX.writeFile(wb, 'Mau_Nhap_Hoc_Sinh_Smart_Tracker.xlsx');
 }
+
+export interface ParsedGradeRow {
+  studentCode: string;
+  fullName: string;
+  score: string | number;
+  note: string;
+  [key: string]: any;
+}
+
+const GRADE_FIELD_ALIASES: Record<keyof ParsedGradeRow, string[]> = {
+  studentCode: ['studentcode', 'mahs', 'mahocsinh', 'mssv', 'code', 'id', 'madinhdanh'],
+  fullName: ['fullname', 'hovaten', 'hoten', 'tenhocsinh', 'ten', 'name'],
+  score: ['score', 'diem', 'diemso', 'grade', 'diemkiemtra'],
+  note: ['note', 'ghichu', 'nhanxet', 'danhgia'],
+};
+
+export async function parseGradeExcelOrCsvFile(file: File): Promise<{ rows: ParsedGradeRow[]; fileName: string }> {
+  const buffer = await file.arrayBuffer();
+  // xlsx can parse both .xlsx, .xls, and .csv with type: 'array'
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  if (!workbook.SheetNames.length) {
+    throw new Error('Tệp không chứa bảng tính hoặc dữ liệu nào.');
+  }
+
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rawData: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+  if (!rawData || rawData.length === 0) {
+    throw new Error('Trang tính không có dòng dữ liệu nào.');
+  }
+
+  const rows: ParsedGradeRow[] = rawData.map((row) => {
+    const rowKeys = Object.keys(row);
+    let studentCode = '';
+    let fullName = '';
+    let score: any = '';
+    let note = '';
+
+    for (const k of rowKeys) {
+      const normK = normalizeKey(k);
+      if (!studentCode && GRADE_FIELD_ALIASES.studentCode.some((a) => normalizeKey(a) === normK)) {
+        studentCode = String(row[k] || '').trim();
+      } else if (!fullName && GRADE_FIELD_ALIASES.fullName.some((a) => normalizeKey(a) === normK)) {
+        fullName = String(row[k] || '').trim();
+      } else if (score === '' && GRADE_FIELD_ALIASES.score.some((a) => normalizeKey(a) === normK)) {
+        score = row[k];
+      } else if (!note && GRADE_FIELD_ALIASES.note.some((a) => normalizeKey(a) === normK)) {
+        note = String(row[k] || '').trim();
+      }
+    }
+
+    // Fallbacks if columns didn't match canonical keys
+    if (!studentCode && rowKeys.length > 0) studentCode = String(row[rowKeys[0]] || '').trim();
+    if (!fullName && rowKeys.length > 1) fullName = String(row[rowKeys[1]] || '').trim();
+    if (score === '' && rowKeys.length > 2) score = row[rowKeys[2]];
+    if (!note && rowKeys.length > 3) note = String(row[rowKeys[3]] || '').trim();
+
+    // Normalize score comma e.g. 8,5 -> 8.5
+    let scoreStr = String(score ?? '').trim();
+    if (scoreStr.includes(',')) {
+      scoreStr = scoreStr.replace(',', '.');
+    }
+
+    return {
+      studentCode,
+      fullName,
+      score: scoreStr,
+      note,
+      ...row,
+    };
+  }).filter((r) => r.studentCode || r.fullName || r.score !== '');
+
+  return { rows, fileName: file.name };
+}
+
+export function downloadGradeTemplateExcel(
+  assessmentTitle: string,
+  students: Array<{ studentCode: string; fullName: string }> = []
+) {
+  const data =
+    students.length > 0
+      ? students.map((st) => ({
+          'Mã học sinh': st.studentCode,
+          'Họ và tên': st.fullName,
+          'Điểm số (0-10)': '',
+          'Ghi chú': '',
+        }))
+      : [
+          {
+            'Mã học sinh': 'HS2025-1001',
+            'Họ và tên': 'Nguyễn Hoàng Nam',
+            'Điểm số (0-10)': 8.5,
+            'Ghi chú': 'Kiểm tra đợt 1',
+          },
+          {
+            'Mã học sinh': 'HS2025-1002',
+            'Họ và tên': 'Trần Bảo Châu',
+            'Điểm số (0-10)': 9.0,
+            'Ghi chú': 'Tốt',
+          },
+          {
+            'Mã học sinh': 'HS2025-1003',
+            'Họ và tên': 'Lê Tuấn Kiệt',
+            'Điểm số (0-10)': 7.5,
+            'Ghi chú': '',
+          },
+        ];
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [
+    { wch: 18 },
+    { wch: 25 },
+    { wch: 16 },
+    { wch: 24 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const safeSheetName = assessmentTitle.slice(0, 30).replace(/[:\\\/\?\*\[\]]/g, '_') || 'Bang_Diem';
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
+  const safeFileName = `Bang_Diem_${assessmentTitle.slice(0, 35).replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_')}.xlsx`;
+  XLSX.writeFile(wb, safeFileName);
+}
+

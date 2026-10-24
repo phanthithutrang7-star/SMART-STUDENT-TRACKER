@@ -21,6 +21,7 @@ import { Assessment, AssessmentResult, Student, Subject, ClassGroup } from '../.
 import { useAuth } from '../../context/AuthContext.tsx';
 import { Modal } from '../common/Modal.tsx';
 import { parseGradeCsv, detectAssessmentMatch } from '../../utils/csvParser.ts';
+import { parseGradeExcelOrCsvFile, downloadGradeTemplateExcel } from '../../utils/excelParser.ts';
 
 export const AssessmentsView: React.FC = () => {
   const { canGrade, selectedClassId } = useAuth();
@@ -237,6 +238,19 @@ export const AssessmentsView: React.FC = () => {
     link.click();
   };
 
+  const handleDownloadExcelTemplate = () => {
+    const targetAsm = assessments.find((a) => a.id === importAssessmentId) || assessments[0];
+    if (!targetAsm) {
+      alert('Chưa có bài đánh giá nào.');
+      return;
+    }
+    const classStudents = students.filter((s) => s.classId === targetAsm.classId);
+    downloadGradeTemplateExcel(
+      targetAsm.title,
+      classStudents.map((st) => ({ studentCode: st.studentCode, fullName: st.fullName }))
+    );
+  };
+
   const handleLoadSampleGradeCsv = () => {
     const targetAsm = assessments.find((a) => a.id === importAssessmentId) || assessments[0];
     const classStudents = students.filter((s) => s.classId === targetAsm?.classId).slice(0, 5);
@@ -275,27 +289,45 @@ export const AssessmentsView: React.FC = () => {
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const text = (event.target?.result as string) || '';
-        setImportCsvText(text);
+    if (!file) return;
 
-        // Auto-match assessment based on filename
-        let targetId = importAssessmentId;
-        const matchedId = detectAssessmentMatch(file.name, assessments);
-        if (matchedId) {
-          targetId = matchedId;
-          setImportAssessmentId(matchedId);
-        }
+    setFileName(file.name);
 
-        // Auto-trigger preview immediately so user sees results without delay
-        await processAndPreviewCsv(text, targetId);
-      };
-      reader.readAsText(file);
+    // Auto-match assessment based on filename
+    let targetId = importAssessmentId;
+    const matchedId = detectAssessmentMatch(file.name, assessments);
+    if (matchedId) {
+      targetId = matchedId;
+      setImportAssessmentId(matchedId);
+    }
+
+    try {
+      setIsVerifyingImport(true);
+      setImportSuccessMsg(null);
+
+      // Support Excel (.xlsx, .xls) and CSV
+      const { rows } = await parseGradeExcelOrCsvFile(file);
+      if (rows.length === 0) {
+        alert('Tệp dữ liệu không có dòng điểm nào hoặc không tìm thấy cột dữ liệu hợp lệ.');
+        setIsVerifyingImport(false);
+        return;
+      }
+
+      // Convert to visible CSV representation for inspection in textarea
+      const csvLines = ['studentCode,fullName,score,note'];
+      rows.forEach((r) => {
+        csvLines.push(`${r.studentCode},"${r.fullName}",${r.score ?? ''},${r.note || ''}`);
+      });
+      setImportCsvText(csvLines.join('\n'));
+
+      const preview = await api.previewImportScores(targetId, rows);
+      setImportPreviewData(preview);
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi đọc tệp điểm.');
+    } finally {
+      setIsVerifyingImport(false);
     }
   };
 
@@ -599,7 +631,7 @@ HS2025-1008,Bùi Gia Huy,9,K`;
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
-                accept=".csv,text/csv"
+                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                 className="hidden"
               />
               <button
@@ -608,15 +640,25 @@ HS2025-1008,Bùi Gia Huy,9,K`;
                 className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <UploadCloud className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{fileName ? `Tệp: ${fileName}` : 'Chọn tệp CSV từ máy'}</span>
+                <span>{fileName ? `Tệp: ${fileName}` : 'Chọn tệp Excel / CSV'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadExcelTemplate}
+                className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100 rounded-md border border-emerald-300 flex items-center gap-1 cursor-pointer"
+                title="Tải mẫu bảng điểm Excel chuẩn tiếng Việt cho lớp"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Tải mẫu Excel (.xlsx)</span>
               </button>
               <button
                 type="button"
                 onClick={handleDownloadGradeTemplate}
-                className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-200 flex items-center gap-1 cursor-pointer"
+                className="px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-200 flex items-center gap-1 cursor-pointer"
+                title="Tải mẫu CSV"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Tải bảng điểm mẫu của lớp</span>
+                <span>CSV</span>
               </button>
               <button
                 type="button"

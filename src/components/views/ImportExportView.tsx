@@ -17,7 +17,12 @@ import { api } from '../../api/client.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { Assessment, Student } from '../../types/index.ts';
 import { parseGradeCsv, detectAssessmentMatch } from '../../utils/csvParser.ts';
-import { parseStudentExcelFile, downloadStudentTemplateExcel } from '../../utils/excelParser.ts';
+import {
+  parseStudentExcelFile,
+  downloadStudentTemplateExcel,
+  parseGradeExcelOrCsvFile,
+  downloadGradeTemplateExcel,
+} from '../../utils/excelParser.ts';
 
 type ImportTab = 'STUDENTS' | 'GRADES';
 
@@ -192,6 +197,19 @@ HS2025-1033,Phạm Tuấn Hùng,Nam,2009-12-08,hung.pt@smarttracker.edu.vn,09124
     link.click();
   };
 
+  const handleDownloadGradeExcelTemplate = () => {
+    const targetAsm = assessments.find((a) => a.id === selectedAsmId) || assessments[0];
+    if (!targetAsm) {
+      alert('Chưa có bài đánh giá nào.');
+      return;
+    }
+    const classStudents = students.filter((s) => s.classId === targetAsm.classId);
+    downloadGradeTemplateExcel(
+      targetAsm.title,
+      classStudents.map((st) => ({ studentCode: st.studentCode, fullName: st.fullName }))
+    );
+  };
+
   const processAndPreviewGrades = async (csvContent: string, customAsmId?: string) => {
     const parsed = parseGradeCsv(csvContent);
     if (parsed.rows.length === 0) {
@@ -217,25 +235,43 @@ HS2025-1033,Phạm Tuấn Hùng,Nam,2009-12-08,hung.pt@smarttracker.edu.vn,09124
     }
   };
 
-  const handleGradeFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGradeFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setGradeFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const text = (event.target?.result as string) || '';
-        setGradeCsvText(text);
+    if (!file) return;
 
-        let targetId = selectedAsmId;
-        const matched = detectAssessmentMatch(file.name, assessments);
-        if (matched) {
-          targetId = matched;
-          setSelectedAsmId(matched);
-        }
+    setGradeFileName(file.name);
 
-        await processAndPreviewGrades(text, targetId);
-      };
-      reader.readAsText(file);
+    let targetId = selectedAsmId;
+    const matched = detectAssessmentMatch(file.name, assessments);
+    if (matched) {
+      targetId = matched;
+      setSelectedAsmId(matched);
+    }
+
+    try {
+      setIsVerifyingGrades(true);
+      setGradeSuccessMessage(null);
+
+      // Support Excel (.xlsx, .xls) and CSV
+      const { rows } = await parseGradeExcelOrCsvFile(file);
+      if (rows.length === 0) {
+        alert('Tệp dữ liệu không có dòng điểm nào hoặc không tìm thấy cột dữ liệu hợp lệ.');
+        setIsVerifyingGrades(false);
+        return;
+      }
+
+      const csvLines = ['studentCode,fullName,score,note'];
+      rows.forEach((r) => {
+        csvLines.push(`${r.studentCode},"${r.fullName}",${r.score ?? ''},${r.note || ''}`);
+      });
+      setGradeCsvText(csvLines.join('\n'));
+
+      const preview = await api.previewImportScores(targetId, rows);
+      setGradePreviewData(preview);
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi đọc tệp điểm.');
+    } finally {
+      setIsVerifyingGrades(false);
     }
   };
 
@@ -523,7 +559,7 @@ HS2025-1008,Bùi Gia Huy,9,K`;
                       type="file"
                       ref={gradeFileInputRef}
                       onChange={handleGradeFileSelect}
-                      accept=".csv,text/csv"
+                      accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                       className="hidden"
                     />
                     <button
@@ -532,15 +568,25 @@ HS2025-1008,Bùi Gia Huy,9,K`;
                       className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       <UploadCloud className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{gradeFileName ? `Tệp: ${gradeFileName}` : 'Chọn tệp CSV từ máy'}</span>
+                      <span>{gradeFileName ? `Tệp: ${gradeFileName}` : 'Chọn tệp Excel / CSV'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadGradeExcelTemplate}
+                      className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100 rounded-md border border-emerald-300 flex items-center gap-1 cursor-pointer"
+                      title="Tải mẫu bảng điểm Excel chuẩn tiếng Việt cho lớp"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Tải mẫu Excel (.xlsx)</span>
                     </button>
                     <button
                       type="button"
                       onClick={handleDownloadGradeTemplate}
-                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-200 flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-200 flex items-center gap-1 cursor-pointer"
+                      title="Tải mẫu CSV"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Tải bảng điểm mẫu</span>
+                      <span>CSV</span>
                     </button>
                     <button
                       type="button"
