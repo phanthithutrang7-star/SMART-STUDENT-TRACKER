@@ -30,7 +30,10 @@ import {
   initialAuditLogs,
 } from './seedData.ts';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const isVercel = Boolean(process.env.VERCEL);
+const DATA_DIR = isVercel
+  ? path.resolve('/tmp', 'smart-tracker-data')
+  : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
 
 export interface DatabaseSchema {
@@ -59,6 +62,15 @@ class Database {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         return JSON.parse(raw);
+      }
+
+      // If running on Vercel and /tmp doesn't have db.json yet, attempt reading bundled data/db.json
+      const bundledDbFile = path.resolve(process.cwd(), 'data', 'db.json');
+      if (fs.existsSync(bundledDbFile)) {
+        const raw = fs.readFileSync(bundledDbFile, 'utf-8');
+        const data = JSON.parse(raw);
+        this.persist(data);
+        return data;
       }
     } catch (e) {
       console.warn('Failed to load db.json, fallback to seed data:', e);
@@ -89,7 +101,7 @@ class Database {
       }
       fs.writeFileSync(DB_FILE, JSON.stringify(state || this.data, null, 2), 'utf-8');
     } catch (e) {
-      console.error('Failed to write db.json:', e);
+      console.warn('Persistent disk write skipped (in-memory mode):', (e as any)?.message || e);
     }
   }
 

@@ -127,7 +127,7 @@ Mẫu 2: Tin nhắn gửi phụ huynh thông báo tình hình nộp bài và ph�
     try {
       const response = await Promise.race([
         client.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-2.5-flash',
           contents: userPrompt,
           config: {
             systemInstruction: systemPrompt,
@@ -143,7 +143,7 @@ Mẫu 2: Tin nhắn gửi phụ huynh thông báo tình hình nộp bài và ph�
       return {
         success: true,
         isAiGenerated: true,
-        model: 'gemini-3.8-flash',
+        model: 'gemini-2.5-flash',
         result: responseText,
         dataContextSummary: {
           classCode: dataContext.classCode,
