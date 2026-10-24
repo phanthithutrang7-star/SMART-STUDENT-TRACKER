@@ -12,9 +12,10 @@ import {
   HelpCircle,
   FileText,
   User,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../api/client.ts';
-import { Alert, AlertStatus, AlertPriority, ClassGroup } from '../../types/index.ts';
+import { Alert, AlertStatus, AlertPriority, ClassGroup, Student } from '../../types/index.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { StatusBadge } from '../common/StatusBadge.tsx';
 import { Modal } from '../common/Modal.tsx';
@@ -23,6 +24,7 @@ export const AlertsView: React.FC = () => {
   const { canEdit, selectedClassId } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [classes, setClasses] = useState<ClassGroup[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -34,6 +36,18 @@ export const AlertsView: React.FC = () => {
   const [actionPlanInput, setActionPlanInput] = useState('');
   const [teacherNoteInput, setTeacherNoteInput] = useState('');
 
+  // Delete Alert Modal
+  const [alertToDelete, setAlertToDelete] = useState<Alert | null>(null);
+  const [isDeletingAlert, setIsDeletingAlert] = useState(false);
+
+  // Manual Alert / Intervention Modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [manualStudentId, setManualStudentId] = useState('');
+  const [manualTitle, setManualTitle] = useState('Kế hoạch can thiệp sư phạm cá nhân');
+  const [manualReason, setManualReason] = useState('Giáo viên ghi nhận học sinh cần hỗ trợ thêm phương pháp học tập.');
+  const [manualPriority, setManualPriority] = useState<AlertPriority>('MEDIUM');
+  const [manualPlan, setManualPlan] = useState('Trao đổi với phụ huynh và phụ đạo thêm sau giờ học.');
+
   useEffect(() => {
     loadAlerts();
   }, [selectedClassId, statusFilter, priorityFilter]);
@@ -41,16 +55,21 @@ export const AlertsView: React.FC = () => {
   const loadAlerts = async () => {
     try {
       setIsLoading(true);
-      const [alts, cls] = await Promise.all([
+      const [alts, cls, stds] = await Promise.all([
         api.getAlerts({
           classId: selectedClassId || undefined,
           status: statusFilter || undefined,
           priority: priorityFilter || undefined,
         }),
         api.getClasses(),
+        api.getStudents({ classId: selectedClassId || undefined }),
       ]);
       setAlerts(alts);
       setClasses(cls);
+      setStudents(stds);
+      if (stds.length > 0 && !manualStudentId) {
+        setManualStudentId(stds[0].id);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -95,6 +114,43 @@ export const AlertsView: React.FC = () => {
     }
   };
 
+  const handleDeleteAlert = async () => {
+    if (!alertToDelete) return;
+    try {
+      setIsDeletingAlert(true);
+      await api.deleteAlert(alertToDelete.id);
+      setAlertToDelete(null);
+      await loadAlerts();
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi xóa cảnh báo');
+    } finally {
+      setIsDeletingAlert(false);
+    }
+  };
+
+  const handleCreateManualAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualStudentId) {
+      alert('Vui lòng chọn học sinh cần lập can thiệp');
+      return;
+    }
+    try {
+      await api.createAlert({
+        studentId: manualStudentId,
+        ruleTitle: manualTitle,
+        triggerReason: manualReason,
+        priority: manualPriority,
+        actionPlan: manualPlan,
+      });
+      setShowCreateModal(false);
+      setManualTitle('Kế hoạch can thiệp sư phạm cá nhân');
+      setManualPlan('');
+      await loadAlerts();
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi tạo can thiệp');
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -102,19 +158,28 @@ export const AlertsView: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Cảnh Báo Sớm & Kế Hoạch Can Thiệp</h1>
           <p className="text-xs text-slate-500 mt-1">
-            Bộ máy phát hiện sớm dựa trên quy tắc khách quan (nợ ≥ 3 bài, tỷ lệ nộp &lt; 60%, giảm điểm kiểm tra)
+            Bộ máy phát hiện sớm dựa trên quy tắc khách quan (nợ ≥ 3 bài, tỷ lệ nộp &lt; 60%, giảm điểm kiểm tra) và can thiệp sư phạm
           </p>
         </div>
 
         {canEdit && (
-          <button
-            onClick={handleEvaluateRules}
-            disabled={isEvaluating}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isEvaluating ? 'animate-spin' : ''}`} />
-            <span>{isEvaluating ? 'Đang quét quy tắc...' : 'Quét Lại Quy Tắc (Scan)'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tạo Can Thiệp Mới</span>
+            </button>
+            <button
+              onClick={handleEvaluateRules}
+              disabled={isEvaluating}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isEvaluating ? 'animate-spin' : ''}`} />
+              <span>{isEvaluating ? 'Đang quét quy tắc...' : 'Quét Lại Quy Tắc (Scan)'}</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -253,12 +318,21 @@ export const AlertsView: React.FC = () => {
                 </div>
 
                 {canEdit && (
-                  <button
-                    onClick={() => openInterventionModal(alert)}
-                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg transition-colors border border-blue-200"
-                  >
-                    Cập nhật kế hoạch can thiệp
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => openInterventionModal(alert)}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg transition-colors border border-blue-200"
+                    >
+                      Cập nhật kế hoạch can thiệp
+                    </button>
+                    <button
+                      onClick={() => setAlertToDelete(alert)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition-colors"
+                      title="Xóa cảnh báo"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -342,6 +416,148 @@ export const AlertsView: React.FC = () => {
               </button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* Manual Alert / Intervention Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Lập Kế Hoạch Can Thiệp Sư Phạm Cá Nhân"
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateManualAlert} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Chọn Học Sinh</label>
+            <select
+              required
+              value={manualStudentId}
+              onChange={(e) => setManualStudentId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            >
+              {students.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.fullName} ({st.studentCode})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Mức Độ Ưu Tiên</label>
+            <select
+              value={manualPriority}
+              onChange={(e) => setManualPriority(e.target.value as AlertPriority)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            >
+              <option value="HIGH">Cao (Cần hỗ trợ khẩn cấp)</option>
+              <option value="MEDIUM">Trung bình (Theo dõi & nhắc nhở)</option>
+              <option value="LOW">Thấp (Động viên định kỳ)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Tiêu Đề Can Thiệp</label>
+            <input
+              type="text"
+              required
+              value={manualTitle}
+              onChange={(e) => setManualTitle(e.target.value)}
+              placeholder="VD: Cần phụ đạo thêm hình học không gian"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Căn Cứ / Lý Do Can Thiệp</label>
+            <textarea
+              rows={2}
+              required
+              value={manualReason}
+              onChange={(e) => setManualReason(e.target.value)}
+              placeholder="Ghi nhận từ bài kiểm tra gần nhất hoặc phản ánh của giáo viên..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Biện Pháp Can Thiệp Cụ Thể</label>
+            <textarea
+              rows={2}
+              value={manualPlan}
+              onChange={(e) => setManualPlan(e.target.value)}
+              placeholder="Kế hoạch gặp học sinh, giao bài tập bổ trợ hoặc thông báo cho gia đình..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+            />
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(false)}
+              className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs"
+            >
+              Lưu Can Thiệp
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!alertToDelete}
+        onClose={() => !isDeletingAlert && setAlertToDelete(null)}
+        title="Xác Nhận Xóa Cảnh Báo"
+        maxWidth="md"
+      >
+        {alertToDelete && (
+          <div className="space-y-4">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-rose-900 space-y-1">
+                <p className="font-bold">Bạn có chắc chắn muốn xóa cảnh báo này?</p>
+                <p>
+                  Bản ghi cảnh báo và toàn bộ nhật ký trao đổi can thiệp của học sinh sẽ bị gỡ bỏ khỏi danh sách theo dõi.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Học sinh:</span>
+                <span className="font-bold text-slate-800">{alertToDelete.studentName} ({alertToDelete.studentCode})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nội dung cảnh báo:</span>
+                <span className="font-medium text-slate-800">{alertToDelete.ruleTitle}</span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingAlert}
+                onClick={() => setAlertToDelete(null)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAlert}
+                onClick={handleDeleteAlert}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingAlert ? 'Đang xóa...' : 'Xác Nhận Xóa'}
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

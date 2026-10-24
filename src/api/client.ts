@@ -50,6 +50,8 @@ export const api = {
     request<ClassGroup>('/classes', { method: 'POST', body: JSON.stringify(cls) }),
   updateClass: (id: string, cls: Partial<ClassGroup>) =>
     request<ClassGroup>(`/classes/${id}`, { method: 'PUT', body: JSON.stringify(cls) }),
+  deleteClass: (id: string) =>
+    request<{ success: boolean; message: string }>(`/classes/${id}`, { method: 'DELETE' }),
 
   // Students
   getStudents: (params?: { classId?: string; search?: string; status?: string }) => {
@@ -68,6 +70,8 @@ export const api = {
     request<Student>('/students', { method: 'POST', body: JSON.stringify(student) }),
   updateStudent: (id: string, student: Partial<Student>) =>
     request<Student>(`/students/${id}`, { method: 'PUT', body: JSON.stringify(student) }),
+  deleteStudent: (id: string) =>
+    request<{ success: boolean; message: string }>(`/students/${id}`, { method: 'DELETE' }),
   transferStudent: (id: string, toClassId: string, reason: string) =>
     request<Student>(`/students/${id}/transfer`, {
       method: 'POST',
@@ -86,6 +90,8 @@ export const api = {
     request<Assignment>('/assignments', { method: 'POST', body: JSON.stringify(asg) }),
   updateAssignment: (id: string, asg: Partial<Assignment>) =>
     request<Assignment>(`/assignments/${id}`, { method: 'PUT', body: JSON.stringify(asg) }),
+  deleteAssignment: (id: string) =>
+    request<{ success: boolean; message: string }>(`/assignments/${id}`, { method: 'DELETE' }),
 
   // Submissions
   getSubmissions: (params?: { assignmentId?: string; studentId?: string; classId?: string; status?: string }) => {
@@ -110,6 +116,10 @@ export const api = {
   },
   createAssessment: (asm: Partial<Assessment>) =>
     request<Assessment>('/assessments', { method: 'POST', body: JSON.stringify(asm) }),
+  updateAssessment: (id: string, asm: Partial<Assessment>) =>
+    request<Assessment>(`/assessments/${id}`, { method: 'PUT', body: JSON.stringify(asm) }),
+  deleteAssessment: (id: string) =>
+    request<{ success: boolean; message: string }>(`/assessments/${id}`, { method: 'DELETE' }),
   getAssessmentResults: (params?: { assessmentId?: string; studentId?: string }) => {
     const query = new URLSearchParams(params as any).toString();
     return request<AssessmentResult[]>(`/assessments/results${query ? `?${query}` : ''}`);
@@ -153,8 +163,18 @@ export const api = {
     const query = new URLSearchParams(params as any).toString();
     return request<Alert[]>(`/alerts${query ? `?${query}` : ''}`);
   },
+  createAlert: (alert: {
+    studentId: string;
+    ruleTitle: string;
+    triggerReason: string;
+    priority: Alert['priority'];
+    actionPlan?: string;
+    note?: string;
+  }) => request<Alert>('/alerts', { method: 'POST', body: JSON.stringify(alert) }),
   updateAlert: (id: string, updates: { status?: Alert['status']; note?: string; actionPlan?: string }) =>
     request<Alert>(`/alerts/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
+  deleteAlert: (id: string) =>
+    request<{ success: boolean; message: string }>(`/alerts/${id}`, { method: 'DELETE' }),
   evaluateAlerts: () => request<{ success: boolean; alerts: Alert[] }>('/alerts/evaluate', { method: 'POST' }),
 
   // AI Assistant

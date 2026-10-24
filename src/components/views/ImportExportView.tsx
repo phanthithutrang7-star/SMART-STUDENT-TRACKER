@@ -17,6 +17,7 @@ import { api } from '../../api/client.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { Assessment, Student } from '../../types/index.ts';
 import { parseGradeCsv, detectAssessmentMatch } from '../../utils/csvParser.ts';
+import { parseStudentExcelFile, downloadStudentTemplateExcel } from '../../utils/excelParser.ts';
 
 type ImportTab = 'STUDENTS' | 'GRADES';
 
@@ -24,7 +25,9 @@ export const ImportExportView: React.FC = () => {
   const { canEdit, selectedClassId } = useAuth();
   const [activeTab, setActiveTab] = useState<ImportTab>('STUDENTS');
   const gradeFileInputRef = useRef<HTMLInputElement>(null);
+  const studentFileInputRef = useRef<HTMLInputElement>(null);
   const [gradeFileName, setGradeFileName] = useState('');
+  const [studentFileName, setStudentFileName] = useState('');
 
   // Student Import State
   const [csvText, setCsvText] = useState('');
@@ -72,6 +75,27 @@ HS2025-1033,Phạm Tuấn Hùng,Nam,2009-12-08,hung.pt@smarttracker.edu.vn,09124
     setCsvText(sampleCsv);
     setPreviewData(null);
     setImportSuccessMessage(null);
+  };
+
+  const handleStudentFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsVerifying(true);
+      setStudentFileName(file.name);
+      setImportSuccessMessage(null);
+
+      const rows = await parseStudentExcelFile(file);
+      const preview = await api.previewImport(rows);
+      setPreviewData(preview);
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi đọc file Excel/CSV');
+      setPreviewData(null);
+    } finally {
+      setIsVerifying(false);
+      if (studentFileInputRef.current) studentFileInputRef.current.value = '';
+    }
   };
 
   const handleParseAndPreview = async () => {
@@ -313,32 +337,59 @@ HS2025-1008,Bùi Gia Huy,9,K`;
           {activeTab === 'STUDENTS' && (
             <>
               <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <UploadCloud className="w-5 h-5 text-blue-600" />
                     <h3 className="text-sm font-bold text-slate-900">
-                      Bước 1: Tải lên hoặc dán nội dung CSV danh sách học sinh
+                      Bước 1: Chọn tệp Excel (.xlsx, .xls) hoặc dán CSV danh sách học sinh
                     </h3>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={downloadSampleFile}
-                      className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-md border border-slate-200 flex items-center gap-1 cursor-pointer"
+                      onClick={downloadStudentTemplateExcel}
+                      className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 flex items-center gap-1 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Tải tệp mẫu</span>
+                      <span>Tải file Excel mẫu (.xlsx)</span>
                     </button>
                     <button
                       onClick={handleLoadSample}
                       className="px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-md border border-blue-200 cursor-pointer"
                     >
-                      Dán mẫu thử nghiệm
+                      Dán mẫu thử
                     </button>
                   </div>
                 </div>
 
+                {/* Direct Excel file upload zone */}
+                <div
+                  onClick={() => studentFileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50/60 hover:bg-emerald-50/20 rounded-xl p-5 text-center cursor-pointer transition-all"
+                >
+                  <input
+                    type="file"
+                    ref={studentFileInputRef}
+                    onChange={handleStudentFileUpload}
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                  />
+                  <FileSpreadsheet className="w-7 h-7 text-emerald-600 mx-auto mb-1.5" />
+                  <p className="text-xs font-bold text-slate-800">
+                    {studentFileName ? `Đã chọn: ${studentFileName}` : 'Bấm để tải lên tệp Excel (.xlsx, .xls) hoặc CSV'}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Hệ thống tự động đọc các cột: Mã HS, Họ và tên, Giới tính, Ngày sinh, Lớp, Email...
+                  </p>
+                </div>
+
+                <div className="relative flex items-center my-2">
+                  <div className="grow border-t border-slate-200"></div>
+                  <span className="shrink mx-3 text-[11px] uppercase font-bold text-slate-400">Hoặc dán nội dung CSV</span>
+                  <div className="grow border-t border-slate-200"></div>
+                </div>
+
                 <textarea
-                  rows={6}
+                  rows={4}
                   value={csvText}
                   onChange={(e) => setCsvText(e.target.value)}
                   placeholder="Dán nội dung tệp CSV tại đây (các cột: studentCode,fullName,gender,birthDate,email,phone,classCode,parentName,parentPhone)..."

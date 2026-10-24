@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { School, Plus, Users, BookOpen, Edit2, Archive, CheckCircle, Search } from 'lucide-react';
+import { School, Plus, Users, BookOpen, Edit2, Trash2, Archive, CheckCircle, Search, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { api } from '../../api/client.ts';
 import { ClassGroup, Student } from '../../types/index.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
@@ -15,6 +15,8 @@ export const ClassesView: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClassForRoster, setSelectedClassForRoster] = useState<ClassGroup | null>(null);
   const [editingClass, setEditingClass] = useState<ClassGroup | null>(null);
+  const [classToDelete, setClassToDelete] = useState<ClassGroup | null>(null);
+  const [isDeletingClass, setIsDeletingClass] = useState(false);
 
   // Form state
   const [formCode, setFormCode] = useState('');
@@ -86,6 +88,20 @@ export const ClassesView: React.FC = () => {
     setFormTeacher(c.homeroomTeacher);
     setFormYear(c.academicYear);
     setShowAddModal(true);
+  };
+
+  const handleDeleteClass = async () => {
+    if (!classToDelete) return;
+    try {
+      setIsDeletingClass(true);
+      await api.deleteClass(classToDelete.id);
+      setClassToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi xóa lớp học');
+    } finally {
+      setIsDeletingClass(false);
+    }
   };
 
   return (
@@ -168,13 +184,22 @@ export const ClassesView: React.FC = () => {
                   Xem danh sách ({classStudents.length})
                 </button>
                 {canEdit && (
-                  <button
-                    onClick={() => openEdit(cls)}
-                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
-                    title="Chỉnh sửa thông tin lớp"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEdit(cls)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
+                      title="Chỉnh sửa thông tin lớp"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setClassToDelete(cls)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition-colors"
+                      title="Xóa lớp học"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -321,6 +346,74 @@ export const ClassesView: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Class Confirmation Modal */}
+      <Modal
+        isOpen={!!classToDelete}
+        onClose={() => !isDeletingClass && setClassToDelete(null)}
+        title="Xác Nhận Xóa Lớp Học"
+        maxWidth="md"
+      >
+        {classToDelete && (
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900 space-y-1">
+                <p className="font-bold">Quy tắc an toàn dữ liệu:</p>
+                <p>
+                  Hệ thống chỉ cho phép xóa lớp học khi không còn học sinh nào đang theo học trong lớp.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Mã lớp:</span>
+                <span className="font-bold text-slate-800">{classToDelete.code}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tên lớp:</span>
+                <span className="font-bold text-slate-900">{classToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Sĩ số hiện tại:</span>
+                <span className="font-semibold text-blue-600">
+                  {students.filter((s) => s.classId === classToDelete.id && s.status === 'ACTIVE').length} học sinh
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingClass}
+                onClick={() => setClassToDelete(null)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingClass}
+                onClick={handleDeleteClass}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingClass ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang kiểm tra & xóa...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xác Nhận Xóa</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

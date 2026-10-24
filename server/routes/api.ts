@@ -57,6 +57,16 @@ router.put('/classes/:id', (req, res) => {
   }
 });
 
+router.delete('/classes/:id', (req, res) => {
+  try {
+    const success = db.deleteClass(req.params.id, currentUser);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy lớp học' });
+    res.json({ success: true, message: 'Đã xóa lớp học thành công' });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // --- STUDENTS ---
 router.get('/students', (req, res) => {
   const { classId, search, status } = req.query as { classId?: string; search?: string; status?: string };
@@ -88,6 +98,16 @@ router.put('/students/:id', (req, res) => {
     const student = db.updateStudent(req.params.id, req.body, currentUser);
     if (!student) return res.status(404).json({ error: 'Không tìm thấy học sinh' });
     res.json(student);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/students/:id', (req, res) => {
+  try {
+    const success = db.deleteStudent(req.params.id, currentUser);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy học sinh' });
+    res.json({ success: true, message: 'Đã xóa học sinh thành công' });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
@@ -133,6 +153,16 @@ router.put('/assignments/:id', (req, res) => {
     const updated = db.updateAssignment(req.params.id, req.body, currentUser);
     if (!updated) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
     res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/assignments/:id', (req, res) => {
+  try {
+    const success = db.deleteAssignment(req.params.id, currentUser);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
+    res.json({ success: true, message: 'Đã xóa bài tập thành công' });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
@@ -187,6 +217,26 @@ router.post('/assessments', (req, res) => {
   try {
     const item = db.createAssessment(req.body, currentUser);
     res.json(item);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.put('/assessments/:id', (req, res) => {
+  try {
+    const updated = db.updateAssessment(req.params.id, req.body, currentUser);
+    if (!updated) return res.status(404).json({ error: 'Không tìm thấy bài đánh giá' });
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/assessments/:id', (req, res) => {
+  try {
+    const success = db.deleteAssessment(req.params.id, currentUser);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy bài đánh giá' });
+    res.json({ success: true, message: 'Đã xóa bài đánh giá thành công' });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
@@ -349,11 +399,30 @@ router.get('/alerts', (req, res) => {
   res.json(db.getAlerts({ classId, priority, status }));
 });
 
+router.post('/alerts', (req, res) => {
+  try {
+    const alert = db.createAlert(req.body, currentUser);
+    res.json(alert);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 router.put('/alerts/:id', (req, res) => {
   try {
     const updated = db.updateAlert(req.params.id, req.body, currentUser);
     if (!updated) return res.status(404).json({ error: 'Không tìm thấy cảnh báo' });
     res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/alerts/:id', (req, res) => {
+  try {
+    const success = db.deleteAlert(req.params.id, currentUser);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy cảnh báo' });
+    res.json({ success: true, message: 'Đã xóa cảnh báo thành công' });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }

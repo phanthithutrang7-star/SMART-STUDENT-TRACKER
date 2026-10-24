@@ -182,6 +182,19 @@ class Database {
     return this.data.classes[idx];
   }
 
+  public deleteClass(id: string, user: any): boolean {
+    const cls = this.data.classes.find((c) => c.id === id);
+    if (!cls) return false;
+    const activeStudentCount = this.data.students.filter((s) => s.classId === id && s.status === 'ACTIVE').length;
+    if (activeStudentCount > 0) {
+      throw new Error(`Lớp ${cls.code} đang có ${activeStudentCount} học sinh đang học. Vui lòng chuyển lớp cho các học sinh trước khi xóa lớp.`);
+    }
+    this.data.classes = this.data.classes.filter((c) => c.id !== id);
+    this.logAudit(user, 'XÓA_LỚP_HỌC', 'LỚP_HỌC', `Xóa lớp học ${cls.code} (${cls.name})`);
+    this.persist();
+    return true;
+  }
+
   // --- Students ---
   public getStudents(filters?: { classId?: string; search?: string; status?: string }): Student[] {
     return this.data.students.filter((s) => {
@@ -241,6 +254,21 @@ class Database {
     this.logAudit(user, 'CẬP_NHẬT_HỌC_SINH', 'HỌC_SINH', `Cập nhật thông tin học sinh ${this.data.students[idx].fullName}`);
     this.persist();
     return this.data.students[idx];
+  }
+
+  public deleteStudent(id: string, user: any): boolean {
+    const student = this.getStudentById(id);
+    if (!student) return false;
+
+    this.data.students = this.data.students.filter((s) => s.id !== id);
+    // Cleanup cascade
+    this.data.submissions = this.data.submissions.filter((s) => s.studentId !== id);
+    this.data.assessmentResults = this.data.assessmentResults.filter((r) => r.studentId !== id);
+    this.data.alerts = this.data.alerts.filter((a) => a.studentId !== id);
+
+    this.logAudit(user, 'XÓA_HỌC_SINH', 'HỌC_SINH', `Xóa hồ sơ học sinh ${student.fullName} (${student.studentCode}) và toàn bộ dữ liệu bài nộp, điểm số liên quan`);
+    this.persist();
+    return true;
   }
 
   public transferStudent(id: string, toClassId: string, reason: string, user: any): Student | null {
@@ -326,6 +354,19 @@ class Database {
     this.logAudit(user, 'CẬP_NHẬT_BÀI_TẬP', 'BÀI_TẬP', `Cập nhật bài tập "${this.data.assignments[idx].title}"`);
     this.persist();
     return this.data.assignments[idx];
+  }
+
+  public deleteAssignment(id: string, user: any): boolean {
+    const asg = this.getAssignmentById(id);
+    if (!asg) return false;
+
+    this.data.assignments = this.data.assignments.filter((a) => a.id !== id);
+    // Cleanup submissions for this assignment
+    this.data.submissions = this.data.submissions.filter((s) => s.assignmentId !== id);
+
+    this.logAudit(user, 'XÓA_BÀI_TẬP', 'BÀI_TẬP', `Xóa bài tập "${asg.title}" và các bài nộp liên quan`);
+    this.persist();
+    return true;
   }
 
   // --- Submissions ---
@@ -424,6 +465,50 @@ class Database {
     this.logAudit(user, 'TẠO_BÀI_ĐÁNH_GIÁ', 'KẾT_QUẢ_ĐÁNH_GIÁ', `Tạo bài đánh giá "${newAssessment.title}"`);
     this.persist();
     return newAssessment;
+  }
+
+  public updateAssessment(id: string, updates: Partial<Assessment>, user: any): Assessment | null {
+    const idx = this.data.assessments.findIndex((a) => a.id === id);
+    if (idx === -1) return null;
+
+    const oldAsm = this.data.assessments[idx];
+    this.data.assessments[idx] = { ...oldAsm, ...updates };
+
+    // If classId changed, create results for new class students if not exists
+    if (updates.classId && updates.classId !== oldAsm.classId) {
+      const studentsInNewClass = this.data.students.filter((s) => s.classId === updates.classId && s.status === 'ACTIVE');
+      for (const student of studentsInNewClass) {
+        const hasResult = this.data.assessmentResults.some((r) => r.assessmentId === id && r.studentId === student.id);
+        if (!hasResult) {
+          this.data.assessmentResults.push({
+            id: `res_${id}_${student.id}`,
+            assessmentId: id,
+            studentId: student.id,
+            score: null,
+            adjustmentHistory: [],
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    this.logAudit(user, 'CẬP_NHẬT_BÀI_ĐÁNH_GIÁ', 'KẾT_QUẢ_ĐÁNH_GIÁ', `Cập nhật bài đánh giá "${this.data.assessments[idx].title}"`);
+    this.persist();
+    return this.data.assessments[idx];
+  }
+
+  public deleteAssessment(id: string, user: any): boolean {
+    const asm = this.data.assessments.find((a) => a.id === id);
+    if (!asm) return false;
+
+    this.data.assessments = this.data.assessments.filter((a) => a.id !== id);
+    // Cleanup results for this assessment
+    this.data.assessmentResults = this.data.assessmentResults.filter((r) => r.assessmentId !== id);
+
+    this.logAudit(user, 'XÓA_BÀI_ĐÁNH_GIÁ', 'KẾT_QUẢ_ĐÁNH_GIÁ', `Xóa bài đánh giá "${asm.title}" và toàn bộ điểm số liên quan`);
+    this.persist();
+    this.runAlertEngine();
+    return true;
   }
 
   public getAssessmentResults(assessmentId?: string, studentId?: string): AssessmentResult[] {
@@ -869,6 +954,65 @@ class Database {
     this.logAudit(user, 'CẬP_NHẬT_CẢNH_BÁO', 'CẢNH_BÁO', `Cập nhật trạng thái cảnh báo của học sinh ${alert.studentName}: ${alert.status}`);
     this.persist();
     return alert;
+  }
+
+  public createAlert(
+    data: {
+      studentId: string;
+      ruleTitle: string;
+      triggerReason: string;
+      priority: Alert['priority'];
+      actionPlan?: string;
+      note?: string;
+    },
+    user: any
+  ): Alert {
+    const student = this.getStudentById(data.studentId);
+    if (!student) {
+      throw new Error('Không tìm thấy học sinh để tạo cảnh báo/can thiệp.');
+    }
+    const studentClass = this.getClassById(student.classId);
+
+    const newAlert: Alert = {
+      id: `alt_manual_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      studentId: student.id,
+      studentName: student.fullName,
+      studentCode: student.studentCode,
+      classId: student.classId,
+      className: studentClass?.code || student.classId,
+      ruleCode: 'MANUAL_INTERVENTION',
+      ruleTitle: data.ruleTitle || 'Kế hoạch can thiệp sư phạm cá nhân',
+      triggerReason: data.triggerReason || 'Do giáo viên phụ trách trực tiếp ghi nhận và đề xuất can thiệp.',
+      basisData: `Ghi nhận thủ công bởi ${user.name} (${user.role})`,
+      detectedAt: new Date().toISOString(),
+      priority: data.priority || 'MEDIUM',
+      status: 'OPEN',
+      actionPlan: data.actionPlan || '',
+      teacherNotes: data.note
+        ? [
+            {
+              date: new Date().toISOString(),
+              author: user.name,
+              content: data.note,
+            },
+          ]
+        : [],
+    };
+
+    this.data.alerts.unshift(newAlert);
+    this.logAudit(user, 'TẠO_CẢNH_BÁO_THỦ_CÔNG', 'CẢNH_BÁO', `Tạo kế hoạch can thiệp/cảnh báo cho học sinh ${student.fullName}`);
+    this.persist();
+    return newAlert;
+  }
+
+  public deleteAlert(id: string, user: any): boolean {
+    const alert = this.data.alerts.find((a) => a.id === id);
+    if (!alert) return false;
+
+    this.data.alerts = this.data.alerts.filter((a) => a.id !== id);
+    this.logAudit(user, 'XÓA_CẢNH_BÁO', 'CẢNH_BÁO', `Xóa cảnh báo/kế hoạch can thiệp của học sinh ${alert.studentName}`);
+    this.persist();
+    return true;
   }
 
   // --- System Settings ---

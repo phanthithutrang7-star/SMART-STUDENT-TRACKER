@@ -34,6 +34,8 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({ onNavigateTrac
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
+  const [assignmentToDelete, setAssignmentToDelete] = useState<Assignment | null>(null);
+  const [isDeletingAssignment, setIsDeletingAssignment] = useState(false);
 
   // Form
   const [formTitle, setFormTitle] = useState('');
@@ -139,6 +141,20 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({ onNavigateTrac
       loadData();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleDeleteAssignment = async () => {
+    if (!assignmentToDelete) return;
+    try {
+      setIsDeletingAssignment(true);
+      await api.deleteAssignment(assignmentToDelete.id);
+      setAssignmentToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi xóa bài tập');
+    } finally {
+      setIsDeletingAssignment(false);
     }
   };
 
@@ -318,6 +334,13 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({ onNavigateTrac
                         >
                           <Clock className="w-4 h-4" />
                         </button>
+                        <button
+                          onClick={() => setAssignmentToDelete(asg)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition-colors"
+                          title="Xóa bài tập"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </>
                     )}
                   </div>
@@ -463,6 +486,68 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({ onNavigateTrac
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!assignmentToDelete}
+        onClose={() => !isDeletingAssignment && setAssignmentToDelete(null)}
+        title="Xác Nhận Xóa Bài Tập"
+        maxWidth="md"
+      >
+        {assignmentToDelete && (
+          <div className="space-y-4">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-rose-900 space-y-1">
+                <p className="font-bold">Hành động này sẽ xóa toàn bộ bài nộp của học sinh!</p>
+                <p>
+                  Tất cả trạng thái nộp bài, điểm số và nhận xét liên quan đến bài tập "{assignmentToDelete.title}" sẽ bị xóa vĩnh viễn.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tiêu đề bài tập:</span>
+                <span className="font-bold text-slate-800">{assignmentToDelete.title}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Hạn nộp:</span>
+                <span className="font-medium text-slate-800">
+                  {new Date(assignmentToDelete.dueDate).toLocaleDateString('vi-VN')}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Lớp áp dụng:</span>
+                <span className="font-medium text-slate-800">
+                  {assignmentToDelete.classIds
+                    .map((cid) => classes.find((c) => c.id === cid)?.code || cid)
+                    .join(', ')}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingAssignment}
+                onClick={() => setAssignmentToDelete(null)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAssignment}
+                onClick={handleDeleteAssignment}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingAssignment ? 'Đang xóa...' : 'Xác Nhận Xóa'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

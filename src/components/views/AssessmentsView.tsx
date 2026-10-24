@@ -5,6 +5,7 @@ import {
   Calendar,
   CheckCircle2,
   Edit2,
+  Trash2,
   History,
   TrendingUp,
   FileSpreadsheet,
@@ -41,15 +42,21 @@ export const AssessmentsView: React.FC = () => {
   } | null>(null);
   const [scoreInput, setScoreInput] = useState<string>('');
   const [reasonInput, setReasonInput] = useState<string>('Nhập/điều chỉnh điểm');
+  const [isUpdatingScore, setIsUpdatingScore] = useState(false);
 
-  // Add Assessment Modal
+  // Add & Edit Assessment Modal
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState<Assessment['type']>('15_MIN');
   const [newSubjectId, setNewSubjectId] = useState('');
   const [newClassId, setNewClassId] = useState('cls_10a1');
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [newWeight, setNewWeight] = useState(1);
+
+  // Delete Assessment Modal
+  const [assessmentToDelete, setAssessmentToDelete] = useState<Assessment | null>(null);
+  const [isDeletingAssessment, setIsDeletingAssessment] = useState(false);
 
   // Import Grades Modal State
   const [showImportModal, setShowImportModal] = useState(false);
@@ -123,21 +130,88 @@ export const AssessmentsView: React.FC = () => {
     }
   };
 
-  const handleCreateAssessment = async (e: React.FormEvent) => {
+  const handleOpenCreateAssessment = () => {
+    setEditingAssessment(null);
+    setNewTitle('');
+    setNewType('15_MIN');
+    setNewWeight(1);
+    setNewDate(new Date().toISOString().slice(0, 10));
+    setNewSubjectId(subjects[0]?.id || '');
+    setNewClassId(selectedClassId || classes[0]?.id || 'cls_10a1');
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditAssessment = (asm: Assessment) => {
+    setEditingAssessment(asm);
+    setNewTitle(asm.title);
+    setNewType(asm.type);
+    setNewWeight(asm.weight);
+    setNewDate(asm.date.slice(0, 10));
+    setNewSubjectId(asm.subjectId);
+    setNewClassId(asm.classId);
+    setShowAddModal(true);
+  };
+
+  const handleDeleteAssessment = async () => {
+    if (!assessmentToDelete) return;
+    try {
+      setIsDeletingAssessment(true);
+      await api.deleteAssessment(assessmentToDelete.id);
+      setAssessmentToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi xóa bài đánh giá');
+    } finally {
+      setIsDeletingAssessment(false);
+    }
+  };
+
+  const handleClearScore = async () => {
+    if (!editingResult) return;
+    try {
+      setIsUpdatingScore(true);
+      await api.updateAssessmentResult(
+        editingResult.res.id,
+        null,
+        reasonInput || 'Xóa điểm / Đặt lại trống'
+      );
+      setEditingResult(null);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi xóa điểm');
+    } finally {
+      setIsUpdatingScore(false);
+    }
+  };
+
+  const handleSaveAssessment = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.createAssessment({
-        title: newTitle,
-        type: newType,
-        subjectId: newSubjectId,
-        classId: newClassId,
-        date: newDate,
-        maxScore: 10,
-        weight: newWeight,
-      });
+      if (editingAssessment) {
+        await api.updateAssessment(editingAssessment.id, {
+          title: newTitle,
+          type: newType,
+          subjectId: newSubjectId,
+          classId: newClassId,
+          date: newDate,
+          maxScore: 10,
+          weight: newWeight,
+        });
+      } else {
+        await api.createAssessment({
+          title: newTitle,
+          type: newType,
+          subjectId: newSubjectId,
+          classId: newClassId,
+          date: newDate,
+          maxScore: 10,
+          weight: newWeight,
+        });
+      }
       setShowAddModal(false);
+      setEditingAssessment(null);
       setNewTitle('');
-      loadData();
+      await loadData();
     } catch (err: any) {
       alert(err.message);
     }
@@ -309,7 +383,7 @@ HS2025-1008,Bùi Gia Huy,9,K`;
             </button>
 
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={handleOpenCreateAssessment}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -351,7 +425,7 @@ HS2025-1008,Bùi Gia Huy,9,K`;
             </h3>
           </div>
           <span className="text-[11px] text-slate-400 italic">
-            * Bấm vào ô điểm để sửa cá nhân hoặc dùng nút "Nhập Điểm Từ Excel" ở trên để nhập cả lớp
+            * Bấm vào ô điểm để sửa/xóa điểm hoặc rê chuột lên tiêu đề bài để sửa/xóa bài đánh giá
           </span>
         </div>
 
@@ -362,10 +436,32 @@ HS2025-1008,Bùi Gia Huy,9,K`;
                 <th className="py-3 px-4 w-28">Mã HS</th>
                 <th className="py-3 px-4 w-48">Họ và Tên</th>
                 {assessments.map((asm) => (
-                  <th key={asm.id} className="py-3 px-3 text-center min-w-[110px]">
-                    <div className="font-bold text-slate-800">{asm.title}</div>
+                  <th key={asm.id} className="py-3 px-3 text-center min-w-[140px] group">
+                    <div className="flex items-center justify-center gap-1">
+                      <span className="font-bold text-slate-800">{asm.title}</span>
+                      {canGrade && (
+                        <div className="inline-flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditAssessment(asm)}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-200 rounded transition-colors"
+                            title="Chỉnh sửa bài đánh giá"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAssessmentToDelete(asm)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded transition-colors"
+                            title="Xóa bài đánh giá"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <div className="text-[10px] text-slate-400 font-normal mt-0.5">
-                      {asm.type} • HS {asm.weight}
+                      {asm.type} • HS {asm.weight} • {new Date(asm.date).toLocaleDateString('vi-VN')}
                     </div>
                   </th>
                 ))}
@@ -728,33 +824,53 @@ HS2025-1008,Bùi Gia Huy,9,K`;
               </div>
             )}
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingResult(null)}
-                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg"
-              >
-                Hủy
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs"
-              >
-                Lưu Điểm Số
-              </button>
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div>
+                {editingResult.res.score !== null && (
+                  <button
+                    type="button"
+                    disabled={isUpdatingScore}
+                    onClick={handleClearScore}
+                    className="px-3 py-2 text-rose-600 hover:bg-rose-50 text-xs font-semibold rounded-lg border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa Điểm (Để Trống)</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingResult(null)}
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingScore}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs disabled:opacity-50"
+                >
+                  {isUpdatingScore ? 'Đang lưu...' : 'Lưu Điểm Số'}
+                </button>
+              </div>
             </div>
           </form>
         )}
       </Modal>
 
-      {/* Add Assessment Modal */}
+      {/* Add & Edit Assessment Modal */}
       <Modal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        title="Thêm Bài Đánh Giá Mới Vào Sổ Điểm"
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingAssessment(null);
+        }}
+        title={editingAssessment ? 'Chỉnh Sửa Bài Đánh Giá' : 'Thêm Bài Đánh Giá Mới Vào Sổ Điểm'}
         maxWidth="md"
       >
-        <form onSubmit={handleCreateAssessment} className="space-y-4">
+        <form onSubmit={handleSaveAssessment} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Tên Bài Đánh Giá</label>
             <input
@@ -851,7 +967,10 @@ HS2025-1008,Bùi Gia Huy,9,K`;
           <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setShowAddModal(false)}
+              onClick={() => {
+                setShowAddModal(false);
+                setEditingAssessment(null);
+              }}
               className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg"
             >
               Hủy
@@ -860,10 +979,80 @@ HS2025-1008,Bùi Gia Huy,9,K`;
               type="submit"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs"
             >
-              Tạo Bài Đánh Giá
+              {editingAssessment ? 'Lưu Thay Đổi' : 'Tạo Bài Đánh Giá'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Assessment Confirmation Modal */}
+      <Modal
+        isOpen={!!assessmentToDelete}
+        onClose={() => !isDeletingAssessment && setAssessmentToDelete(null)}
+        title="Xác Nhận Xóa Bài Đánh Giá"
+        maxWidth="md"
+      >
+        {assessmentToDelete && (
+          <div className="space-y-4">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-rose-900 space-y-1">
+                <p className="font-bold">Hành động này sẽ xóa toàn bộ điểm số của bài kiểm tra này!</p>
+                <p>
+                  Toàn bộ kết quả điểm đã chấm của tất cả học sinh thuộc bài kiểm tra "{assessmentToDelete.title}" sẽ bị xóa khỏi sổ điểm.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tên bài kiểm tra:</span>
+                <span className="font-bold text-slate-800">{assessmentToDelete.title}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Hình thức / Hệ số:</span>
+                <span className="font-medium text-slate-800">
+                  {assessmentToDelete.type} • Hệ số {assessmentToDelete.weight}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Lớp áp dụng:</span>
+                <span className="font-medium text-slate-800">
+                  {classes.find((c) => c.id === assessmentToDelete.classId)?.code || assessmentToDelete.classId}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingAssessment}
+                onClick={() => setAssessmentToDelete(null)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAssessment}
+                onClick={handleDeleteAssessment}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingAssessment ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xóa...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xác Nhận Xóa</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

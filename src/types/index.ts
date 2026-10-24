@@ -145,7 +145,7 @@ export interface Alert {
   studentCode?: string;
   classId: string;
   className?: string;
-  ruleCode: 'OVERDUE_ASSIGNMENTS' | 'LOW_COMPLETION_RATE' | 'GRADE_DROP' | 'MULTI_RISK_FACTORS';
+  ruleCode: 'OVERDUE_ASSIGNMENTS' | 'LOW_COMPLETION_RATE' | 'GRADE_DROP' | 'MULTI_RISK_FACTORS' | 'MANUAL_INTERVENTION';
   ruleTitle: string;
   triggerReason: string;
   basisData: string;
