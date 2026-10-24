@@ -1,0 +1,6 @@
+{
+  "name": "Smart Student Tracker",
+  "description": "Hệ thống theo dõi, phân tích tiến trình học tập và hỗ trợ học sinh bằng dữ liệu và AI dành cho giáo viên và nhà trường.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
